@@ -68,6 +68,14 @@ def main():
                   help='Use secure bootloader (Nordic SDK < 12)'
                   )
 
+        parser.add_option('-i', '--interface',
+                  action='store',
+                  dest="interface",
+                  type="string",
+                  default=None,
+                  help='Bluetooth adapter to use, e.g. hci1. Defaults to the system default.'
+                  )
+
         parser.add_option('-v', '--verbose',
                   action='store_true',
                   dest='verbose',
@@ -141,9 +149,11 @@ def main():
 
 
         if options.secure_dfu:
-            ble_dfu = BleDfuControllerSecure(options.address.upper(), hexfile, datfile)
+            ble_dfu = BleDfuControllerSecure(options.address.upper(), hexfile, datfile,
+                                             options.interface)
         else:
-            ble_dfu = BleDfuControllerLegacy(options.address.upper(), hexfile, datfile)
+            ble_dfu = BleDfuControllerLegacy(options.address.upper(), hexfile, datfile,
+                                             options.interface)
 
         # Initialize inputs
         ble_dfu.input_setup()

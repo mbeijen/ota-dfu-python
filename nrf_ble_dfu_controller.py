@@ -57,14 +57,23 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
     def _wait_and_parse_notify(self):
         pass
 
-    def __init__(self, target_mac, firmware_path, datfile_path):
+    def __init__(self, target_mac, firmware_path, datfile_path, interface=None):
         self.target_mac = target_mac
 
         self.firmware_path = firmware_path
         self.datfile_path = datfile_path
+        self.interface = interface
 
-        self.ble_conn = pexpect.spawn("gatttool -b '%s' -t random --interactive" % target_mac, logfile=backlogger)
+        self.ble_conn = self._spawn_gatttool()
         self.ble_conn.delaybeforesend = 0
+
+    def _spawn_gatttool(self):
+        """Start gatttool, on a named adapter if one was asked for."""
+        adapter = "-i %s " % self.interface if self.interface else ""
+        # The session log lets _dfu_wait_for_notify() find a notification
+        # that arrived before it started waiting.
+        return pexpect.spawn("gatttool %s-b '%s' -t random --interactive"
+                             % (adapter, self.target_mac), logfile=backlogger)
 
     # --------------------------------------------------------------------------
     #  Start the firmware update process
@@ -154,7 +163,7 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
 
         # Re-start gatttool with the new address
         self.disconnect()
-        self.ble_conn = pexpect.spawn("gatttool -b '%s' -t random --interactive" % self.target_mac, logfile=backlogger)
+        self.ble_conn = self._spawn_gatttool()
         self.ble_conn.delaybeforesend = 0
 
     # --------------------------------------------------------------------------
@@ -180,6 +189,10 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
     #  Example format: "Notification handle = 0x0019 value: 10 01 01"
     # --------------------------------------------------------------------------
     def _dfu_wait_for_notify(self):
+        # gatttool does not report a lost link directly, and the prompt it
+        # leaves behind is not always readable, so cap how long we sit here.
+        silent = 0
+
         while True:
             if verbose: print("dfu_wait_for_notify")
 
@@ -245,7 +258,7 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
 
         # Verify that command was successfully written
         try:
-            res = self.ble_conn.expect('Characteristic value was written successfully.*', timeout=10)
+            res = self.ble_conn.expect('Characteristic value was written successfully', timeout=10)
         except pexpect.TIMEOUT as e:
             print("State timeout")
 
@@ -275,6 +288,6 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
 
         # Verify that command was successfully written
         try:
-            res = self.ble_conn.expect('Characteristic value was written successfully.*', timeout=10)
+            res = self.ble_conn.expect('Characteristic value was written successfully', timeout=10)
         except pexpect.TIMEOUT as e:
             print("State timeout")
