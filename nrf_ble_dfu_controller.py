@@ -123,7 +123,7 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
     # Perform a scan and connect via gatttool.
     # Will return True if a connection was established, False otherwise
     # --------------------------------------------------------------------------
-    def scan_and_connect(self, timeout=2):
+    def scan_and_connect(self, timeout=25):
         if verbose: print("scan_and_connect")
 
         print("Connecting to %s" % (self.target_mac))
@@ -163,7 +163,7 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
     #  Will raise an exception if the UUID is not found
     # --------------------------------------------------------------------------
     def _get_handles(self, uuid):
-        self.ble_conn.before = ""
+        self.ble_conn.before = b""
         self.ble_conn.sendline('characteristics')
 
         try:
