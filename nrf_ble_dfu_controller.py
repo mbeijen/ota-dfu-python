@@ -1,6 +1,7 @@
 import os
 import pexpect
 import re
+import subprocess
 
 from abc   import ABCMeta, abstractmethod
 from array import array
@@ -12,6 +13,34 @@ verbose = False
 # by the device that we missed
 import tempfile
 backlogger = tempfile.NamedTemporaryFile("wb")
+
+def resolve_interface(interface):
+    """Accept either an adapter name or the address of the adapter to use.
+
+    A USB dongle does not keep the same hci number across a replug, or across
+    a reboot, so naming one by number means finding it again by hand every
+    time. Give the address instead and it is looked up here.
+
+    :param interface: An adapter name such as hci0, or a BD address
+    """
+    if not interface or not re.match(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$',
+                                     interface):
+        return interface
+
+    try:
+        listing = subprocess.check_output(['hciconfig'],
+                                          universal_newlines=True)
+    except (OSError, subprocess.CalledProcessError):
+        raise Exception('Cannot list Bluetooth adapters to find ' + interface)
+
+    device = None
+    for line in listing.splitlines():
+        if line and not line[0].isspace():
+            device = line.split(':')[0]
+        elif interface.upper() in line.upper():
+            return device
+    raise Exception('No Bluetooth adapter has the address ' + interface)
+
 
 class NrfBleDfuController(object, metaclass=ABCMeta):
     ctrlpt_handle        = 0
@@ -62,7 +91,7 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
 
         self.firmware_path = firmware_path
         self.datfile_path = datfile_path
-        self.interface = interface
+        self.interface = resolve_interface(interface)
 
         self.ble_conn = self._spawn_gatttool()
         self.ble_conn.delaybeforesend = 0

@@ -73,7 +73,7 @@ def main():
                   dest="interface",
                   type="string",
                   default=None,
-                  help='Bluetooth adapter to use, e.g. hci1. Defaults to the system default.'
+                  help='Bluetooth adapter to use, either a name such as hci1 or its BD address. Defaults to the system default.'
                   )
 
         parser.add_option('-v', '--verbose',
