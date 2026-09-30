@@ -129,7 +129,7 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
         print("Connecting to %s" % (self.target_mac))
 
         try:
-            self.ble_conn.expect('\[LE\]>', timeout=timeout)
+            self.ble_conn.expect(r'\[LE\]>', timeout=timeout)
         except pexpect.TIMEOUT as e:
             return False
 
@@ -187,7 +187,6 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
                 print("connection not alive")
                 return None
 
-            before = self.ble_conn.after
             try:
                 index = self.ble_conn.expect('Notification handle = .*? \r\n', timeout=30)
 
@@ -204,24 +203,22 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
                 #
                 self.ble_conn.sendline('')
                 string = self.ble_conn.before
-                if b'[   ]' in string:
+                if isinstance(string, bytes) and b'[   ]' in string:
                     print('Connection lost! ')
                     raise Exception('Connection Lost')
                 else:
-                    # the notification might have been sent a bit too
-                    # early, reading the log to make sure:
+                    # The notification might have arrived before we started
+                    # waiting, and been consumed by an earlier expect():
+                    # take the most recent one from the session log.
                     with open(backlogger.name, "rb") as f:
                         content = f.read()
-                    if not b"Notification handle = " in content:
+                    last = None
+                    for last in re.finditer(rb'Notification handle = 0x[0-9a-fA-F]+ value: ([0-9a-fA-F ]+)', content):
+                        pass
+                    if last is None:
                         # no notification received
                         return None
-                    else:
-                        # trim the latest message until the notification
-                        while not before.startswith(b"Notification handle ="):
-                            before = before[1:]
-                        hxstr = before.split()[3:]
-                        handle = int(float.fromhex(hxstr[0].decode('UTF-8')))
-                        return hxstr[2:]
+                    return last.group(1).split()
 
             if index == 0:
                 after = self.ble_conn.after

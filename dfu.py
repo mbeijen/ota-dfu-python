@@ -103,11 +103,10 @@ def main():
             unpacker = Unpacker()
             #print options.zipfile
             try:
-                hexfile, datfile = unpacker.unpack_zipfile(options.zipfile)	
+                hexfile, datfile = unpacker.unpack_zipfile(options.zipfile)
             except Exception as e:
-                print("ERR")
-                print(e)
-                pass
+                print("Cannot unpack {}: {}".format(options.zipfile, e))
+                sys.exit(2)
 
         else:
             if (not options.hexfile) or (not options.datfile):
@@ -174,13 +173,11 @@ def main():
         if unpacker != None:
            unpacker.delete()
 
-    except Exception as e:
-        # print traceback.format_exc()
-        print("Exception at line {}: {}".format(sys.exc_info()[2].tb_lineno, e))
-        pass
-
-    except:
-        pass
+    except Exception:
+        # Report where it actually failed, and fail: callers (and scripts)
+        # need a non-zero exit status to tell a failed update from a good one.
+        traceback.print_exc()
+        sys.exit(1)
 
     if options.verbose:
         print("DFU Server done")

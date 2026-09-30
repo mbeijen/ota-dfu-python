@@ -295,7 +295,7 @@ class BleDfuControllerSecure(NrfBleDfuController):
                 if (segment_count % self.pkt_receipt_interval) == 0:
                     try:
                         (proc, res, offset, crc32) = self._wait_and_parse_notify()
-                    except e:
+                    except Exception:
                         # Likely no notification received, need to re-transmit object
                         return 0
 

@@ -202,7 +202,9 @@ class BleDfuControllerLegacy(NrfBleDfuController):
         except:
             pass
 
-        return self.ble_conn.after.find(b'value: 08 00')!=-1
+        # After a timeout .after is pexpect.TIMEOUT rather than the output
+        after = self.ble_conn.after
+        return isinstance(after, bytes) and after.find(b'value: 08 00') != -1
 
     def switch_to_dfu_mode(self):
         (_, bl_value_handle, bl_cccd_handle) = self._get_handles(self.UUID_CONTROL_POINT)
