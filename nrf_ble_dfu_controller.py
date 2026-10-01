@@ -218,10 +218,6 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
     #  Example format: "Notification handle = 0x0019 value: 10 01 01"
     # --------------------------------------------------------------------------
     def _dfu_wait_for_notify(self):
-        # gatttool does not report a lost link directly, and the prompt it
-        # leaves behind is not always readable, so cap how long we sit here.
-        silent = 0
-
         while True:
             if verbose: print("dfu_wait_for_notify")
 
