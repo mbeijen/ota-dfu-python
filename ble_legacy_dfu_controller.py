@@ -83,7 +83,7 @@ class BleDfuControllerLegacy(NrfBleDfuController):
         (_, self.ctrlpt_handle, self.ctrlpt_cccd_handle) = self._get_handles(self.UUID_CONTROL_POINT)
         (_, self.data_handle, _) = self._get_handles(self.UUID_PACKET)
 
-        self.pkt_receipt_interval = 10
+        self.pkt_receipt_interval = 20
 
         if verbose:
             print('Control Point Handle: 0x%04x, CCCD: 0x%04x' % (self.ctrlpt_handle, self.ctrlpt_cccd_handle))
