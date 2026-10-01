@@ -1,114 +1,53 @@
 #!/usr/bin/env python3
+"""
+Device scan using bleak.
+"""
 
-#------------------------------------------------------------------------------
-# Device scan
-#------------------------------------------------------------------------------
+import asyncio
+from bleak import BleakScanner
 
-from subprocess import call
+class BleScanner:
+    """
+    Bluetooth LE scan for advertising peripheral devices.
+    """
 
-import pexpect
-import signal
-import sys
-
-#------------------------------------------------------------------------------
-# Bluetooth LE scan for advertising peripheral devices
-#------------------------------------------------------------------------------
-class HciTool:
-
-    def __init__( self, advert_name ):
+    def __init__(self, advert_name=None):
+        """
+        Initialize the scanner with an optional advertisement name filter.
+        """
         self.advert_name = advert_name
-        return
 
-    def scan( self ):
-
+    async def scan(self):
+        """
+        Perform a BLE scan and return a list of devices.
+        """
         try:
-            self.hcitool = pexpect.spawn('hcitool lescan')
-            #self.hcitool.logfile = sys.stdout
-            index = self.hcitool.expect(['LE Scan ...'], 1)
-        except pexpect.EOF:
-            self.hcitool.terminate(force=True)
-            return []
-        except Exception as err:
-            print("scan: exception: {0}".format(sys.exc_info()[0]))
-            self.hcitool.terminate(force=True)
-            return []
+            print("Starting BLE scan...")
+            devices = await BleakScanner.discover()
 
-        if index != 0:
-            print("scan: failed")
-            self.hcitool.terminate(force=True)
-            return []
+            # Filter devices by advertisement name if specified
+            if self.advert_name:
+                devices = [device for device in devices if self.advert_name in device.name]
 
-        list = []
-        for dummy in range(0, 2):
-            try:
-                list.append(self.hcitool.readline())
-            except pexpect.TIMEOUT:
-                break
+            # Format the results
+            scan_list = [f"{device.address} - {device.name}" for device in devices if device.name]
 
-        if list == []:
-            return []
+            # Print the results
+            for device in scan_list:
+                print(device)
 
-        # Eliminate duplicate items in list
-        list = set(list)
+            return scan_list
 
-        # Remove non self.advert_name units
-        if self.advert_name != None:
-            list = [item for item in list if self.advert_name in item]
-
-        # remove empty items from list
-        while '\r\n' in list:
-            list.remove('\r\n')
-
-        # Strip newline from items in list
-        list = [item.strip() for item in list]
-        list = list[0:2]
-
-        # Close pexpect (release device for subsequent use)
-        self.hcitool.terminate(force=True)
-
-        return list
-
-#------------------------------------------------------------------------------
-#
-#------------------------------------------------------------------------------
-class Scan:
-
-    def __init__( self, advert_name ):
-        self.advert_name = advert_name
-        return    
-
-    def scan(self):
-
-        scan_list = []
-
-        try:
-            hcitool = HciTool(self.advert_name)
-            scan_list = hcitool.scan()
-
-        except KeyboardInterrupt:
-            # On Cntl-C
-            pass;
-        except pexpect.TIMEOUT:
-            print("scan: pexpect.TIMEOUT")
-            pass
         except Exception as e:
-            print("scan: exception: {0} ".format(sys.exc_info()[0]))
-            pass
+            print(f"Scan failed: {e}")
+            return []
+        finally:
+            print("Scan complete")
 
 
-        return scan_list
-
-#------------------------------------------------------------------------------
-#
-#------------------------------------------------------------------------------
 if __name__ == '__main__':
 
-    # Do not litter the world with broken .pyc files.
-    sys.dont_write_bytecode = True
+    # scanner = BleScanner("DfuTarg")  # specific advertisement name
+    scanner = BleScanner(None)  # any advertising name    
+    asyncio.run(scanner.scan())
 
-    #scanner = Scan("DfuTarg")  # specific advertisement name
-    scanner = Scan(None)      # any advertising name
-
-    scanner.scan()
-
-    print("scan complete")

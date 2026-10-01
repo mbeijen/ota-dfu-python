@@ -1,205 +1,168 @@
 #!/usr/bin/env python3
 """
-------------------------------------------------------------------------------
- DFU Server for Nordic nRF51 based systems.
- Conforms to nRF51_SDK 11.0 BLE_DFU requirements.
-------------------------------------------------------------------------------
+DFU Server for Nordic nRF51/nRF52 based systems.
+
+Conforms to nRF51_SDK 11.0 BLE_DFU requirements.
 """
-import os, re
-import sys
-import optparse
-import time
-import math
+import os
+import argparse
 import traceback
+import asyncio
+import logging
+
+from bleak import BleakScanner
 
 from unpacker import Unpacker
 
 from ble_secure_dfu_controller import BleDfuControllerSecure
 from ble_legacy_dfu_controller import BleDfuControllerLegacy
 
-def main():
+logger = logging.getLogger(__name__)
+
+async def main():
+
+    logging.basicConfig(level=logging.INFO)
 
     try:
-        parser = optparse.OptionParser(usage='%prog -f <hex_file> -a <dfu_target_address>\n\nExample:\n\tdfu.py -f application.hex -d application.dat -a cd:e3:4a:47:1c:e4',
-                                       version='0.5')
+        parser = argparse.ArgumentParser(
+            description="DFU Server for Nordic nRF51/nRF52 based systems.",
+            usage='%(prog)s -f <hex_file> -a <dfu_target_address>\n\nExample:\n\tdfu.py -f application.hex -d application.dat -a cd:e3:4a:47:1c:e4'
+        )
 
-        parser.add_option('-a', '--address',
-                  action='store',
-                  dest="address",
-                  type="string",
-                  default=None,
-                  help='DFU target address.'
-                  )
+        parser.add_argument('-a', '--address',
+                            type=str,
+                            required=True,
+                            help='DFU target address.')
+        parser.add_argument('-u', '--auto-switch',
+                            type=bool,
+                            default=True,
+                            help='Try to switch to DFU')
+        parser.add_argument('-f', '--file',
+                            type=str,
+                            dest='hexfile',
+                            help='Hex file to be uploaded.')
 
-        parser.add_option('-f', '--file',
-                  action='store',
-                  dest="hexfile",
-                  type="string",
-                  default=None,
-                  help='hex file to be uploaded.'
-                  )
+        parser.add_argument('-d', '--dat',
+                            type=str,
+                            dest='datfile',
+                            help='DAT file to be uploaded.')
 
-        parser.add_option('-d', '--dat',
-                  action='store',
-                  dest="datfile",
-                  type="string",
-                  default=None,
-                  help='dat file to be uploaded.'
-                  )
+        parser.add_argument('-z', '--zip',
+                            type=str,
+                            dest='zipfile',
+                            help='Zip file to be used.')
 
-        parser.add_option('-z', '--zip',
-                  action='store',
-                  dest="zipfile",
-                  type="string",
-                  default=None,
-                  help='zip file to be used.'
-                  )
+        parser.add_argument('--secure',
+                            action='store_true',
+                            default=True,
+                            help='Use secure bootloader (Nordic SDK > 12).')
 
-        parser.add_option('--secure',
-                  action='store_true',
-                  dest='secure_dfu',
-                  default=True,
-                  help='Use secure bootloader (Nordic SDK > 12)'
-                  )
+        parser.add_argument('--legacy',
+                            action='store_false',
+                            dest='secure_dfu',
+                            help='Use legacy bootloader (Nordic SDK < 12).')
 
-        parser.add_option('--legacy',
-                  action='store_false',
-                  dest='secure_dfu',
-                  help='Use secure bootloader (Nordic SDK < 12)'
-                  )
+        parser.add_argument('-v', '--verbose',
+                            action='store_true',
+                            help='Increase verbosity.')
 
-        parser.add_option('-i', '--interface',
-                  action='store',
-                  dest="interface",
-                  type="string",
-                  default=None,
-                  help='Bluetooth adapter to use, either a name such as hci1 or its BD address. Defaults to the system default.'
-                  )
+        options = parser.parse_args()
 
-        parser.add_option('-v', '--verbose',
-                  action='store_true',
-                  dest='verbose',
-                  help=('Increase verbosity. (You can increase verbosity '
-                      'further by manually setting verbose=True at the top '
-                      'of the other .py files.')
-                  )
-        options, args = parser.parse_args()
+        if options.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
 
     except Exception as e:
-        print(e)
-        print("For help use --help")
-        sys.exit(2)
+        logger.exception('Argument error')
+        parser.print_usage()
+        exit(2)
+
+    unpacker = None
 
     try:
+        # Validate input parameters
+        hexfile = None
+        datfile = None
 
-        ''' Validate input parameters '''
-
-        if not options.address:
-            parser.print_help()
-            exit(2)
-
-        unpacker = None
-        hexfile  = None
-        datfile  = None
-
-        if options.zipfile != None:
-
-            if (options.hexfile != None) or (options.datfile != None):
-                print("Conflicting input directives")
+        if options.zipfile:
+            if options.hexfile or options.datfile:
+                logger.error("Cannot use ZIP file with HEX or DAT file.")
+                parser.print_usage()
                 exit(2)
 
             unpacker = Unpacker()
-            #print options.zipfile
             try:
                 hexfile, datfile = unpacker.unpack_zipfile(options.zipfile)
-            except Exception as e:
-                print("Cannot unpack {}: {}".format(options.zipfile, e))
-                sys.exit(2)
+            except Exception:
+                logger.error('Error unpacking ZIP file', exc_info=True)
 
         else:
-            if (not options.hexfile) or (not options.datfile):
+            if not options.hexfile or not options.datfile:
+                logger.error('HEX file and DAT file are needed.')
                 parser.print_help()
                 exit(2)
 
             if not os.path.isfile(options.hexfile):
-                print("Error: Hex file doesn't exist")
+                logger.error("Error: HEX file doesn't exist")
                 exit(2)
 
             if not os.path.isfile(options.datfile):
-                print("Error: DAT file doesn't exist")
+                logger.error("Error: DAT file doesn't exist")
                 exit(2)
 
             hexfile = options.hexfile
             datfile = options.datfile
 
-
-        ''' Start of Device Firmware Update processing '''
-
-        if options.verbose:
-            init_msg = \
-"""
-    ================================
-    ==                            ==
-    ==         DFU Server         ==
-    ==                            ==
-    ================================
-"""
-            # print "DFU Server start"
-            print(init_msg)
-
-
+        # Start of Device Firmware Update processing
         if options.secure_dfu:
-            ble_dfu = BleDfuControllerSecure(options.address.upper(), hexfile, datfile,
-                                             options.interface)
+            ble_dfu = BleDfuControllerSecure(options.address.upper(), hexfile, datfile)
         else:
-            ble_dfu = BleDfuControllerLegacy(options.address.upper(), hexfile, datfile,
-                                             options.interface)
+            ble_dfu = BleDfuControllerLegacy(options.address.upper(), hexfile, datfile)
 
         # Initialize inputs
         ble_dfu.input_setup()
 
-        # Connect to peer device. Assume application mode.
-        if ble_dfu.scan_and_connect():
-            if not ble_dfu.check_DFU_mode():
-                print("Need to switch to DFU mode")
-                success = ble_dfu.switch_to_dfu_mode()
-                if not success:
-                    print("Couldn't reconnect")
-        else:
-            # The device might already be in DFU mode (MAC + 1)
-            ble_dfu.target_mac_increase(1)
+        dfu_addr = ble_dfu.dfu_mac()
 
-            # Try connection with new address
-            print("Couldn't connect, will try DFU MAC")
-            if not ble_dfu.scan_and_connect():
-                raise Exception("Can't connect to device")
+        device = await BleakScanner.find_device_by_filter(
+            lambda d, _: d.address == ble_dfu.target_mac or d.address == dfu_addr,
+            timeout=10,
+        )
 
-        ble_dfu.start()
+        if device is None:
+            logger.error('Devices not found')
+            return False
 
-        # Disconnect from peer device if not done already and clean up.
-        ble_dfu.disconnect()
+        if device.address != ble_dfu.target_mac:
+            logger.info(f"Device address changed to {device.address}")
+            ble_dfu.target_mac = device.address
 
-        # If Unpacker for zipfile used then delete Unpacker
-        if unpacker != None:
-           unpacker.delete()
+        # Connect to peer device.
+        if not await ble_dfu.connect():
+            logger.error('Could not connect!')
+            return
+
+        if not await ble_dfu.check_dfu_mode():
+            logger.info('Device not in DFU mode')
+            if not options.auto_switch:
+                logger.info('Auto switch to DFU mode disabled')
+                return
+            success = await ble_dfu.switch_to_dfu_mode()
+            if not success:
+                logger.error("Couldn't switch")
+                return
+
+        await ble_dfu.start()
 
     except Exception:
-        # Report where it actually failed, and fail: callers (and scripts)
-        # need a non-zero exit status to tell a failed update from a good one.
-        traceback.print_exc()
-        sys.exit(1)
+        logger.exception('Error during DFU process')
+    finally:
+        # Disconnect from peer device if not done already and clean up.
+        await ble_dfu.disconnect()
 
-    if options.verbose:
-        print("DFU Server done")
+        # If Unpacker for zipfile used then delete Unpacker
+        if unpacker is not None:
+            unpacker.delete()
 
-"""
-------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------
-"""
 if __name__ == '__main__':
-
-    # Do not litter the world with broken .pyc files.
-    sys.dont_write_bytecode = True
-
-    main()
+    asyncio.run(main())

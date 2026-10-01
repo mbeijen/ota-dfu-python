@@ -1,0 +1,2 @@
+bleak==0.20.2
+intelhex==2.3.0
