@@ -48,5 +48,6 @@ class Unpacker(object):
    # 
    #--------------------------------------------------------------------------
    def delete(self):
-       # delete self.unzip_dir and its contents
-       shutil.rmtree(self.unzip_dir)
+       # delete self.unzip_dir and its contents (if unpacking got that far)
+       if getattr(self, 'unzip_dir', None):
+           shutil.rmtree(self.unzip_dir)

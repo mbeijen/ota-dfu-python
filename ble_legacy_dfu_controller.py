@@ -93,7 +93,8 @@ class BleDfuControllerLegacy(NrfBleDfuController):
         self.ctrlpt_cccd_handle = self.UUID_CONTROL_POINT  # CCCD is typically the same as the characteristic handle
         self.data_handle = self.UUID_PACKET
 
-        self.pkt_receipt_interval = 5
+        # Measured on a PineTime: 5 -> 20 cut a full update by about a third
+        self.pkt_receipt_interval = 20
 
         if verbose:
             print(f'Control Point Handle: {self.ctrlpt_handle}, CCCD: {self.ctrlpt_cccd_handle}')

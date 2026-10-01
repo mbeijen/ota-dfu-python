@@ -5,6 +5,7 @@ DFU Server for Nordic nRF51/nRF52 based systems.
 Conforms to nRF51_SDK 11.0 BLE_DFU requirements.
 """
 import os
+import sys
 import argparse
 import traceback
 import asyncio
@@ -77,6 +78,7 @@ async def main():
         exit(2)
 
     unpacker = None
+    ble_dfu = None
 
     try:
         # Validate input parameters
@@ -94,6 +96,7 @@ async def main():
                 hexfile, datfile = unpacker.unpack_zipfile(options.zipfile)
             except Exception:
                 logger.error('Error unpacking ZIP file', exc_info=True)
+                exit(2)
 
         else:
             if not options.hexfile or not options.datfile:
@@ -139,25 +142,28 @@ async def main():
         # Connect to peer device.
         if not await ble_dfu.connect():
             logger.error('Could not connect!')
-            return
+            return False
 
         if not await ble_dfu.check_dfu_mode():
             logger.info('Device not in DFU mode')
             if not options.auto_switch:
-                logger.info('Auto switch to DFU mode disabled')
-                return
+                logger.error('Auto switch to DFU mode disabled')
+                return False
             success = await ble_dfu.switch_to_dfu_mode()
             if not success:
                 logger.error("Couldn't switch")
-                return
+                return False
 
         await ble_dfu.start()
+        return True
 
     except Exception:
         logger.exception('Error during DFU process')
+        return False
     finally:
         # Disconnect from peer device if not done already and clean up.
-        await ble_dfu.disconnect()
+        if ble_dfu is not None:
+            await ble_dfu.disconnect()
 
         # If Unpacker for zipfile used then delete Unpacker
         if unpacker is not None:
@@ -165,4 +171,6 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # Exit non-zero on failure: scripts (and wasptool --ota) need to tell a
+    # failed update from a good one.
+    sys.exit(0 if asyncio.run(main()) else 1)
