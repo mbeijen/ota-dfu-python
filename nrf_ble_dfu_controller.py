@@ -164,11 +164,17 @@ class NrfBleDfuController(object, metaclass=ABCMeta):
         command = bytes([procedure] + params)
         logger.debug('_dfu_send_command %s', command)
 
-        await self.client.write_gatt_char(self.ctrlpt_handle, command)
+        # Control point writes are requests the bootloader acknowledges
+        await self.client.write_gatt_char(self.ctrlpt_handle, command,
+                                          response=True)
 
     async def _dfu_send_data(self, data: bytes):
         '''Send an array of bytes.'''
-        await self.client.write_gatt_char(self.data_handle, data)
+        # Image data goes out as commands (write without response), with
+        # flow control coming from the packet receipt notifications; bleak
+        # would otherwise pick the write type from the characteristic.
+        await self.client.write_gatt_char(self.data_handle, data,
+                                          response=False)
 
     async def _wait_and_parse_notify(self):
         '''Wait for a notification and parse the response.'''

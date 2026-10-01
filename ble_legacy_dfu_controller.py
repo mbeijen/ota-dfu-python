@@ -78,6 +78,10 @@ class BleDfuControllerLegacy(NrfBleDfuController):
         self.notification_event = asyncio.Event()
         self.notification_data = None
 
+    async def _on_connected(self):
+        # start() addresses the characteristics by UUID: nothing to set up
+        pass
+
     # --------------------------------------------------------------------------
     #  Start the firmware update process
     # --------------------------------------------------------------------------
@@ -184,8 +188,7 @@ class BleDfuControllerLegacy(NrfBleDfuController):
     async def check_dfu_mode(self):
         if verbose: print("Checking DFU State...")
 
-        services = await self.client.get_services()
-        for service in services:
+        for service in self.client.services:
             for characteristic in service.characteristics:
                 if characteristic.uuid == self.UUID_VERSION:
                     value = await self.client.read_gatt_char(characteristic.handle)
@@ -193,13 +196,12 @@ class BleDfuControllerLegacy(NrfBleDfuController):
         return False
 
     async def switch_to_dfu_mode(self):
-        (_, bl_value_handle, bl_cccd_handle) = await self._get_handles(self.UUID_CONTROL_POINT)
-
         # Enable notifications
-        await self._enable_notifications(bl_cccd_handle)
+        await self._enable_notifications(self.UUID_CONTROL_POINT)
 
         # Reset the board in DFU mode. After reset the board will be disconnected
-        await self.client.write_gatt_char(bl_value_handle, b'\x01\x04')
+        await self.client.write_gatt_char(self.UUID_CONTROL_POINT, b'\x01\x04',
+                                          response=True)
 
         await asyncio.sleep(0.5)
 
