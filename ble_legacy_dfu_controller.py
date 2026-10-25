@@ -162,7 +162,17 @@ class BleDfuControllerLegacy(NrfBleDfuController):
                 await self._wait_and_parse_notify()
 
             elif (segment_count % self.pkt_receipt_interval) == 0:
-                (proc, res, pkts) = await self._wait_and_parse_notify()
+                result = await self._wait_and_parse_notify()
+
+                # Expect a packet receipt; a response here is the bootloader
+                # reporting a failure (or still being mid-way through an
+                # earlier, interrupted transfer)
+                if result is None:
+                    raise Exception("bad packet receipt notification")
+                if len(result) != 3:
+                    (proc, res) = result
+                    raise Exception(f"unexpected response during upload: {Procedures.to_string(proc)}: {Responses.to_string(res)}")
+                (proc, res, pkts) = result
 
                 if res != Responses.SUCCESS:
                     raise Exception(f"bad notification status: {Responses.to_string(res)}")
